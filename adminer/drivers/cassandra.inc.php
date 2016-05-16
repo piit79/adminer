@@ -354,6 +354,14 @@ if (isset($_GET["cassandra"])) {
 
     function unconvert_field($field, $return)
     {
+        if ($field['type'] != 'varchar') {
+            if (
+                substr($return, 0, 1) == "'"
+                && substr($return, -1) == "'"
+            ) {
+                return substr($return, 1, -1);
+            }
+        }
         return $return;
     }
 
