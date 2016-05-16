@@ -119,6 +119,7 @@ if (isset($_GET["cassandra"])) {
 
             function __construct($result)
             {
+//                echo "<pre>RES: " . var_export($result, true) . "\n</pre>";
                 foreach ($result as $row) {
                     foreach ($row as $key => $val) {
                         if (is_a($val, 'Cassandra\Value')) {
@@ -127,6 +128,7 @@ if (isset($_GET["cassandra"])) {
                     }
                     $this->_rows[] = $row;
                 }
+//                echo "<pre>ROWS: " . var_export($this->_rows, true) . "\n</pre>";
                 $this->num_rows = count($this->_rows);
             }
 
@@ -206,6 +208,16 @@ if (isset($_GET["cassandra"])) {
             if ($where) {
                 $query .= ' WHERE ' . implode(' AND ', $where);
             }
+//            if ($order) {
+//                $query .= ' ORDER BY ' . implode(', ', $order);
+//            }
+//            echo "<pre>SELECT: " . var_export($select, true) . "\n</pre>";
+//            echo "<pre>WHERE:  " . var_export($where, true) . "\n</pre>";
+//            echo "<pre>GROUP:  " . var_export($group, true) . "\n</pre>";
+//            echo "<pre>ORDER:  " . var_export($order, true) . "\n</pre>";
+//            echo "<pre>LIMIT:  $limit\n</pre>";
+//            echo "<pre>PAGE:   $page\n</pre>";
+//            echo "<pre>QUERY:  $query\n</pre>";
             $start = microtime(true);
             $res_obj = $this->_conn->_session->execute(new Cassandra\SimpleStatement($query));
             if ($print) {
@@ -388,6 +400,7 @@ if (isset($_GET["cassandra"])) {
 
     function unconvert_field($field, $return)
     {
+//        echo "<pre>FIELD: " . var_export($field, true) . "</pre>";
         if ($field['type'] != 'varchar') {
             if (
                 substr($return, 0, 1) == "'"
