@@ -11,6 +11,7 @@ if (isset($_GET["cassandra"])) {
             public $extension = "Cassandra";
             public $error;
             public $last_id;
+            public $_result;
 
             /**
              * @var Cassandra\Cluster
@@ -51,6 +52,28 @@ if (isset($_GET["cassandra"])) {
             {
                 $res = $this->_session->execute(new Cassandra\SimpleStatement($query));
                 return new Min_Result($res);
+            }
+
+            /** Send query with more resultsets
+             * @param string
+             * @return bool
+             */
+            function multi_query($query) {
+                return $this->_result = $this->query($query);
+            }
+
+            /** Get current resultset
+             * @return Min_Result
+             */
+            function store_result() {
+                return $this->_result;
+            }
+
+            /** Fetch next resultset
+             * @return bool
+             */
+            function next_result() {
+                return false;
             }
 
             function result($query, $field = 0)
@@ -388,6 +411,15 @@ if (isset($_GET["cassandra"])) {
     function engines()
     {
         return array();
+    }
+
+    /** Explain select
+     * @param Min_DB
+     * @param string
+     * @return Min_Result
+     */
+    function explain($connection, $query) {
+        return false;
     }
 
     function found_rows($table_status, $where)
