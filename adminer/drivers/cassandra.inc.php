@@ -108,26 +108,37 @@ if (isset($_GET["cassandra"])) {
             }
 
             /**
-             * @param \Cassandra\Value $val
+             * @param \Cassandra\Value $value
              * @return bool|int|string
              */
-            function convert_cassandra_value($val)
+            function convert_cassandra_value($value)
             {
-                $type = $val->type();
+                $type = $value->type();
                 if (is_a($type, 'Cassandra\Type\Scalar')) {
                     switch ($type->name()) {
                         case 'bigint':
-                            /** @var Cassandra\Bigint $val */
-                            return $val->toInt();
+                            /** @var Cassandra\Bigint $value */
+                            return $value->toInt();
+                            break;
+
+                        case 'timeuuid':
+                            /** @var Cassandra\Timeuuid $value */
+                            return $value . ' (' . date('Y-m-d H:i:s', $value->time()) . ')';
                             break;
 
                         case 'timestamp':
-                            /** @var Cassandra\Timestamp $val */
-                            return date('Y-m-d H:i:s', $val->time());
+                            /** @var Cassandra\Timestamp $value */
+                            return date('Y-m-d H:i:s', $value->time());
                             break;
                     }
+                } elseif (is_a($value, 'Cassandra\Map')) {
+                    $ret = '';
+                    foreach ($value as $key => $val) {
+                        $ret .= $key . ' => ' . $val . "\n";
+                    }
+                    return $ret;
                 }
-                return (string)$val;
+                return (string)$value;
             }
 
             function fetch_assoc()
