@@ -322,14 +322,27 @@ if (isset($_GET["cassandra"])) {
 
     function table_status($name = "", $fast = false)
     {
-        $return = array();
-        foreach (tables_list() as $table => $type) {
-            $return[$table] = array("Name" => $table);
-            if ($name == $table) {
-                return $return[$table];
-            }
+        /** @var Min_DB */
+        global $connection;
+
+        $ret = array();
+        // return info about a single table?
+        if ($name) {
+            $tbl = $connection->_session->schema()->keyspace($connection->keyspace)->table($name);
+            return array(
+                'Name'    => $tbl->name(),
+                'Comment' => $tbl->comment(),
+            );
         }
-        return $return;
+        // return info about all tables
+        $tables = $connection->_session->schema()->keyspace($connection->keyspace)->tables();
+        foreach ($tables as $tbl) {
+            $ret[$tbl->name()] = array(
+                'Name'    => $tbl->name(),
+                'Comment' => $tbl->comment(),
+            );
+        }
+        return $ret;
     }
 
     function information_schema()
@@ -338,6 +351,7 @@ if (isset($_GET["cassandra"])) {
 
     function is_view($table_status)
     {
+        return false;
     }
 
     function drop_databases($databases)
@@ -360,17 +374,56 @@ if (isset($_GET["cassandra"])) {
         global $connection;
 
         $ret = array();
+        $cTable = $connection->_session->schema()->keyspace($connection->keyspace)->table($table);
+
+        // clustering and primary keys
+        $reduceColumns = function(array $carry, Cassandra\Column $item) {
+            $carry['columns'][$item->name()] = $item->name();
+            // TODO: find a way of getting the order of the clustering key
+            // $carry['descs'][$item->name()] = 1;
+            return $carry;
+        };
+        $ck = $cTable->clusteringKey();
+        if (count($ck)) {
+            $type = 'CLUSTERING';
+            $ckInfo = array_reduce($ck, $reduceColumns, array(
+                'type'    => $type,
+                'columns' => array(),
+                'lengths' => array(),
+                'descs'   => array(),
+            ));
+            $ret[$type] = $ckInfo;
+        }
+        $pk = $cTable->primaryKey();
+        if (count($pk)) {
+            $type = 'PRIMARY';
+            $pkInfo = array_reduce($pk, $reduceColumns, array(
+                'type'    => $type,
+                'columns' => array(),
+                'lengths' => array(),
+                'descs'   => array(),
+            ));
+            $ret[$type] = $pkInfo;
+        }
+
         /** @var Cassandra\Column[] $cols */
-        $cols = $connection->_session->schema()->keyspace($connection->keyspace)->table($table)->columns();
+        $cols = $cTable->columns();
         foreach ($cols as $col) {
-            $ind = $col->indexName();
-            $io = $col->indexOptions();
-            if ($ind || $io) {
-                $ret[$col->name() . ' ' . $ind . '/' . $io] = array(
-                    'type' => 'test',
-                );
+            $indexName = $col->indexName();
+            if ($indexName) {
+                $indexOptions = $col->indexOptions();
+                if (!isset($ret[$indexName])) {
+                    $ret[$indexName] = array(
+                        'type'    => 'INDEX',
+                        'columns' => array(),
+                        'lengths' => array(),
+                        'descs'   => array(),
+                    );
+                }
+                $ret[$indexName]['columns'][$col->name()] = $col->name();
             }
         }
+
         return $ret;
     }
 
