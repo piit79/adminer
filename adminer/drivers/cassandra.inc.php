@@ -41,40 +41,54 @@ if (isset($_GET["cassandra"])) {
                         ->withContactPoints($server)
                         ->withCredentials($username, $password)
                         ->build();
+
                     return $this->select_db();
                 } catch (Exception $ex) {
                     $this->error = $ex->getMessage();
+
                     return false;
                 }
             }
 
+
             function query($query)
             {
                 $res = $this->_session->execute(new Cassandra\SimpleStatement($query));
+
                 return new Min_Result($res);
             }
 
+
             /** Send query with more resultsets
+             *
              * @param string
              * @return bool
              */
-            function multi_query($query) {
+            function multi_query($query)
+            {
                 return $this->_result = $this->query($query);
             }
 
+
             /** Get current resultset
+             *
              * @return Min_Result
              */
-            function store_result() {
+            function store_result()
+            {
                 return $this->_result;
             }
 
+
             /** Fetch next resultset
+             *
              * @return bool
              */
-            function next_result() {
+            function next_result()
+            {
                 return false;
             }
+
 
             function result($query, $field = 0)
             {
@@ -83,8 +97,10 @@ if (isset($_GET["cassandra"])) {
                     return false;
                 }
                 $row = $result->fetch_row();
+
                 return $row[$field];
             }
+
 
             function select_db($keyspace = null)
             {
@@ -94,14 +110,17 @@ if (isset($_GET["cassandra"])) {
                     return true;
                 } catch (Exception $ex) {
                     $this->error = $ex->getMessage();
+
                     return false;
                 }
             }
+
 
             function quote($string)
             {
                 return "'" . $this->escape_string($string) . "'";
             }
+
 
             function escape_string($string)
             {
@@ -117,6 +136,7 @@ if (isset($_GET["cassandra"])) {
             public $_offset = 0;
             public $_charset = array();
 
+
             function __construct($result)
             {
 //                echo "<pre>RES: " . var_export($result, true) . "\n</pre>";
@@ -131,6 +151,7 @@ if (isset($_GET["cassandra"])) {
 //                echo "<pre>ROWS: " . var_export($this->_rows, true) . "\n</pre>";
                 $this->num_rows = count($this->_rows);
             }
+
 
             /**
              * @param \Cassandra\Value $value
@@ -163,15 +184,19 @@ if (isset($_GET["cassandra"])) {
                     }
                     return $ret;
                 }
+
                 return (string)$value;
             }
+
 
             function fetch_assoc()
             {
                 $row = current($this->_rows);
                 next($this->_rows);
+
                 return $row;
             }
+
 
             function fetch_row()
             {
@@ -179,13 +204,16 @@ if (isset($_GET["cassandra"])) {
                 if (!$ret) {
                     return $ret;
                 }
+
                 return array_values($ret);
             }
+
 
             function fetch_field()
             {
                 $keys = array_keys($this->_rows[0]);
                 $name = $keys[$this->_offset++];
+
                 return (object)array(
                     'name' => $name,
                 );
@@ -194,10 +222,10 @@ if (isset($_GET["cassandra"])) {
         }
     }
 
-
     class Min_Driver extends Min_SQL
     {
         public $primary = "_id";
+
 
         function select($table, $select, $where, $group, $order = array(), $limit = 1, $page = 0, $print = false)
         {
@@ -228,8 +256,10 @@ if (isset($_GET["cassandra"])) {
                 $res[] = $row;
             }
             $res_limited = array_slice($res, $page * $limit, $limit);
+
             return new Min_Result($res_limited);
         }
+
 
         function insert($table, $set)
         {
@@ -244,23 +274,27 @@ if (isset($_GET["cassandra"])) {
                 return false;
             }
         }
+
     }
 
 
     function connect()
     {
         global $adminer;
+
         $connection = new Min_DB;
         $credentials = $adminer->credentials();
         if ($connection->connect($credentials[0], $credentials[1], $credentials[2])) {
             return $connection;
         }
+
         return $connection->error;
     }
 
     function error()
     {
         global $connection;
+
         return h($connection->error);
     }
 
@@ -268,6 +302,7 @@ if (isset($_GET["cassandra"])) {
     {
         global $adminer;
         $credentials = $adminer->credentials();
+
         return $credentials[1];
     }
 
@@ -282,6 +317,7 @@ if (isset($_GET["cassandra"])) {
         foreach ($keyspaces as $ks) {
             $ret[] = $ks->name();
         }
+
         return $ret;
     }
 
@@ -303,6 +339,7 @@ if (isset($_GET["cassandra"])) {
         foreach ($keyspaces as $ks) {
             $return[$ks] = count($connection->_session->schema()->keyspace($ks)->tables());
         }
+
         return $return;
     }
 
@@ -317,6 +354,7 @@ if (isset($_GET["cassandra"])) {
         foreach ($tables as $t) {
             $ret[$t->name()] = 'table';
         }
+
         return $ret;
     }
 
@@ -371,6 +409,7 @@ if (isset($_GET["cassandra"])) {
                 );
             }
         }
+
         return $ret;
     }
 
@@ -391,6 +430,7 @@ if (isset($_GET["cassandra"])) {
                 'privileges' => array('insert' => 1, 'select' => 1, 'update' => 1),
             );
         }
+
         return $ret;
     }
 
@@ -409,6 +449,7 @@ if (isset($_GET["cassandra"])) {
                 return substr($return, 1, -1);
             }
         }
+
         return $return;
     }
 
@@ -427,11 +468,13 @@ if (isset($_GET["cassandra"])) {
     }
 
     /** Explain select
+     *
      * @param Min_DB
      * @param string
-     * @return Min_Result
+     * @return Min_Result|false
      */
-    function explain($connection, $query) {
+    function explain($connection, $query)
+    {
         return false;
     }
 
