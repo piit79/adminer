@@ -19,18 +19,20 @@ if (isset($_GET["cassandra"])) {
             public $_cluster;
 
             /**
-             * @var string
-             */
-            public $keyspace;
-
-            /**
              * @var Cassandra\Session
              */
             public $_session;
 
+            /**
+             * @var Cassandra\Keyspace
+             */
+            public $_keyspace;
+
+
             function connect($server, $username, $password)
             {
                 global $adminer;
+
                 $db = $adminer->database();
                 $options = array();
                 if ($db != "") {
@@ -106,7 +108,8 @@ if (isset($_GET["cassandra"])) {
             {
                 try {
                     $this->_session = $this->_cluster->connect($keyspace);
-                    $this->keyspace = $keyspace;
+                    $this->_keyspace = $this->_session->schema()->keyspace($keyspace);
+
                     return true;
                 } catch (Exception $ex) {
                     $this->error = $ex->getMessage();
@@ -350,9 +353,9 @@ if (isset($_GET["cassandra"])) {
 
         $ret = array();
         /** @var Cassandra\Table[] $tables */
-        $tables = $connection->_session->schema()->keyspace($connection->keyspace)->tables();
-        foreach ($tables as $t) {
-            $ret[$t->name()] = 'table';
+        $tables = $connection->_keyspace->tables();
+        foreach ($tables as $tbl) {
+            $ret[$tbl->name()] = 'table';
         }
 
         return $ret;
@@ -399,7 +402,7 @@ if (isset($_GET["cassandra"])) {
 
         $ret = array();
         /** @var Cassandra\Column[] $cols */
-        $cols = $connection->_session->schema()->keyspace($connection->keyspace)->table($table)->columns();
+        $cols = $connection->_keyspace->table($table)->columns();
         foreach ($cols as $col) {
             $ind = $col->indexName();
             $io = $col->indexOptions();
@@ -420,7 +423,7 @@ if (isset($_GET["cassandra"])) {
 
         $ret = array();
         /** @var Cassandra\Column[] $cols */
-        $cols = $connection->_session->schema()->keyspace($connection->keyspace)->table($table)->columns();
+        $cols = $connection->_keyspace->table($table)->columns();
         foreach ($cols as $col) {
             $ret[$col->name()] = array(
                 'field' => $col->name(),
