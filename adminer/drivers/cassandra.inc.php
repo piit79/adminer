@@ -162,29 +162,40 @@ if (isset($_GET["cassandra"])) {
              */
             function convert_cassandra_value($value)
             {
-                $type = $value->type();
-                if (is_a($type, 'Cassandra\Type\Scalar')) {
-                    switch ($type->name()) {
-                        case 'bigint':
-                            /** @var Cassandra\Bigint $value */
-                            return $value->toInt();
-                            break;
-
-                        case 'timeuuid':
-                            /** @var Cassandra\Timeuuid $value */
-                            return $value . ' (' . date('Y-m-d H:i:s', $value->time()) . ')';
-                            break;
-
-                        case 'timestamp':
-                            /** @var Cassandra\Timestamp $value */
-                            return date('Y-m-d H:i:s', $value->time());
-                            break;
-                    }
-                } elseif (is_a($value, 'Cassandra\Map')) {
-                    $ret = '';
+                if ($value instanceof \Cassandra\Tinyint
+                    || $value instanceof \Cassandra\Smallint
+                    || $value instanceof \Cassandra\Bigint
+                ) {
+                    return $value->value();
+                } elseif ($value instanceof \Cassandra\Decimal
+                    || $value instanceof \Cassandra\Float
+                ) {
+                    return $value->toDouble();
+                } elseif ($value instanceof \Cassandra\Timeuuid) {
+                    return $value . ' [' . $value->toDateTime()->format('Y-m-d H:i:s') . ']';
+                } elseif ($value instanceof \Cassandra\Timestamp) {
+                    return $value->toDateTime()->format('Y-m-d H:i:s');
+                } elseif ($value instanceof \Cassandra\Date) {
+                    return $value->toDateTime()->format('Y-m-d');
+                } elseif ($value instanceof \Cassandra\Time) {
+                    $ns = $value->nanoseconds();
+                    return gmdate('H:i:s', floor($ns / 1e6)) . sprintf('.%06d', $ns % 1e6);
+                } elseif ($value instanceof \Cassandra\Inet) {
+                    return $value->address();
+                } elseif ($value instanceof \Cassandra\Map) {
+                    /** @var Cassandra\Type\Map $type */
+                    $keyVals = array();
                     foreach ($value as $key => $val) {
-                        $ret .= $key . ' => ' . $val . "\n";
+                        if (is_string($key)) {
+                            $key = "'" . $key . "'";
+                        }
+                        if (is_string($val)) {
+                            $val = "'" . $val . "'";
+                        }
+                        $keyVals[] = $key . ': ' . $val;
                     }
+                    $ret = "{ " . implode(",\n", $keyVals) . " }";
+
                     return $ret;
                 }
 
@@ -239,16 +250,16 @@ if (isset($_GET["cassandra"])) {
             if ($where) {
                 $query .= ' WHERE ' . implode(' AND ', $where);
             }
-//            if ($order) {
-//                $query .= ' ORDER BY ' . implode(', ', $order);
-//            }
-//            echo "<pre>SELECT: " . var_export($select, true) . "\n</pre>";
-//            echo "<pre>WHERE:  " . var_export($where, true) . "\n</pre>";
-//            echo "<pre>GROUP:  " . var_export($group, true) . "\n</pre>";
-//            echo "<pre>ORDER:  " . var_export($order, true) . "\n</pre>";
-//            echo "<pre>LIMIT:  $limit\n</pre>";
-//            echo "<pre>PAGE:   $page\n</pre>";
-//            echo "<pre>QUERY:  $query\n</pre>";
+            //if ($order) {
+            //    $query .= ' ORDER BY ' . implode(', ', $order);
+            //}
+            //echo "<pre>SELECT: " . var_export($select, true) . "\n</pre>";
+            //echo "<pre>WHERE:  " . var_export($where, true) . "\n</pre>";
+            //echo "<pre>GROUP:  " . var_export($group, true) . "\n</pre>";
+            //echo "<pre>ORDER:  " . var_export($order, true) . "\n</pre>";
+            //echo "<pre>LIMIT:  $limit\n</pre>";
+            //echo "<pre>PAGE:   $page\n</pre>";
+            //echo "<pre>QUERY:  $query\n</pre>";
             $start = microtime(true);
             $res_obj = $this->_conn->_session->execute(new Cassandra\SimpleStatement($query));
             if ($print) {
@@ -266,16 +277,7 @@ if (isset($_GET["cassandra"])) {
 
         function insert($table, $set)
         {
-            try {
-                $return = $this->_conn->_db->selectCollection($table)->insert($set);
-                $this->_conn->errno = $return['code'];
-                $this->_conn->error = $return['err'];
-                $this->_conn->last_id = $set['_id'];
-                return !$return['err'];
-            } catch (Exception $ex) {
-                $this->_conn->error = $ex->getMessage();
-                return false;
-            }
+            return false;
         }
 
     }
@@ -363,14 +365,29 @@ if (isset($_GET["cassandra"])) {
 
     function table_status($name = "", $fast = false)
     {
-        $return = array();
-        foreach (tables_list() as $table => $type) {
-            $return[$table] = array("Name" => $table);
-            if ($name == $table) {
-                return $return[$table];
-            }
+        /** @var Min_DB */
+        global $connection;
+
+        $ret = array();
+        // return info about a single table?
+        if ($name) {
+            $tbl = $connection->_keyspace->table($name);
+
+            return array(
+                'Name'    => $tbl->name(),
+                'Comment' => $tbl->comment(),
+            );
         }
-        return $return;
+        // return info about all tables
+        $tables = $connection->_keyspace->tables();
+        foreach ($tables as $tbl) {
+            $ret[$tbl->name()] = array(
+                'Name'    => $tbl->name(),
+                'Comment' => $tbl->comment(),
+            );
+        }
+
+        return $ret;
     }
 
     function information_schema()
@@ -379,20 +396,17 @@ if (isset($_GET["cassandra"])) {
 
     function is_view($table_status)
     {
+        return false;
     }
 
     function drop_databases($databases)
     {
-        /** @var Min_DB */
-        global $connection;
-
-        foreach ($databases as $db) {
-            $response = $connection->_link->selectDB($db)->drop();
-            if (!$response['ok']) {
-                return false;
-            }
+        $ret = true;
+        foreach ($databases as $ks) {
+            $ret = $ret && queries('DROP KEYSPACE "$ks"');
         }
-        return true;
+
+        return $ret;
     }
 
     function indexes($table, $connection2 = null)
@@ -401,15 +415,64 @@ if (isset($_GET["cassandra"])) {
         global $connection;
 
         $ret = array();
+
+        $clustKeyCols = $connection->_keyspace->table($table)->clusteringKey();
+        $clustOrder = $connection->_keyspace->table($table)->clusteringOrder();
+        $ckInfo = array(
+            'type'    => 'CLUSTERING ORDER',
+            'columns' => array(),
+            'lengths' => array(),
+            'descs'   => array(),
+        );
+        if (count($clustKeyCols)) {
+            foreach ($clustKeyCols as $i => $col) {
+                $ckInfo['columns'][$col->name()] = $col->name();
+                if (isset($clustOrder[$i]) && strtoupper($clustOrder[$i]) == 'DESC') {
+                    $ckInfo['descs'][$col->name()] = 1;
+                }
+            }
+            $ret['CLUSTERING ORDER'] = $ckInfo;
+        }
+
+        $partKeyCols = $connection->_keyspace->table($table)->partitionKey();
+        if (count($partKeyCols)) {
+            $pkInfo = array(
+                'type'    => 'PRIMARY',
+                'columns' => array(),
+                'lengths' => array(),
+                'descs'   => array(),
+            );
+            $partCols = array();
+            foreach ($partKeyCols as $col) {
+                $partCols[] = $col->name();
+            }
+            $pk = implode($partCols, ', ');
+            if (count($partCols) > 1) {
+                $pk = '(' . $pk . ')';
+            }
+            $pkInfo['columns'][$pk] = $pk;
+            $pkInfo['columns'] = array_merge($pkInfo['columns'], $ckInfo['columns']);
+            $ret['PRIMARY'] = $pkInfo;
+        }
+
         /** @var Cassandra\Column[] $cols */
         $cols = $connection->_keyspace->table($table)->columns();
         foreach ($cols as $col) {
-            $ind = $col->indexName();
-            $io = $col->indexOptions();
-            if ($ind || $io) {
-                $ret[$col->name() . ' ' . $ind . '/' . $io] = array(
-                    'type' => 'test',
-                );
+            $indexName = $col->indexName();
+            if ($indexName) {
+                $indexOptions = $col->indexOptions();
+                if (!isset($ret[$indexName])) {
+                    $ret[$indexName] = array(
+                        'type'    => 'INDEX',
+                        'columns' => array(),
+                        'lengths' => array(),
+                        'descs'   => array(),
+                    );
+                }
+                $ret[$indexName]['columns'][$col->name()] = $col->name();
+                if ($col->isReversed()) {
+                    $ret[$indexName][$col->name()] = 1;
+                }
             }
         }
 
@@ -425,11 +488,25 @@ if (isset($_GET["cassandra"])) {
         /** @var Cassandra\Column[] $cols */
         $cols = $connection->_keyspace->table($table)->columns();
         foreach ($cols as $col) {
+            $type = $col->type();
+            $typeName = $type->name();
+            if ($type instanceof \Cassandra\Type\Collection
+                || $type instanceof \Cassandra\Type\Set
+            ) {
+                $typeName .= '<' . $type->valueType()->name() . '>';
+            } elseif ($type instanceof \Cassandra\Type\Map) {
+                $typeName .= '<' . $type->keyType()->name() . ', ' . $type->valueType()->name() . '>';
+            } elseif ($type instanceof \Cassandra\Type\Tuple) {
+                $types = array();
+                foreach ($type->types() as $t) {
+                    $types[] = $t->name();
+                }
+                $typeName .= '<' .  implode(', ', $types) . '>';
+            }
             $ret[$col->name()] = array(
-                'field' => $col->name(),
-                'full_type' => $col->type()->name(),
-                'type' => $col->type()->name(),
-                // 'primary' => true,
+                'field'      => $col->name(),
+                'full_type'  => $typeName,
+                'type'       => $typeName,
                 'privileges' => array('insert' => 1, 'select' => 1, 'update' => 1),
             );
         }
@@ -486,7 +563,6 @@ if (isset($_GET["cassandra"])) {
         /** @var Min_DB */
         global $connection;
 
-        //! don't call count_rows()
         return null;
     }
 
@@ -495,38 +571,27 @@ if (isset($_GET["cassandra"])) {
         /** @var Min_DB */
         global $connection;
 
-        if ($table == "") {
-            $connection->_db->createCollection($name);
-            return true;
-        }
+        return false;
     }
 
     function drop_tables($tables)
     {
-        /** @var Min_DB */
-        global $connection;
-
-        foreach ($tables as $table) {
-            $response = $connection->_db->selectCollection($table)->drop();
-            if (!$response['ok']) {
-                return false;
-            }
+        $ret = true;
+        foreach ($tables as $tbl) {
+            $ret = $ret && queries('DROP TABLE ' . table($tbl));
         }
-        return true;
+
+        return $ret;
     }
 
     function truncate_tables($tables)
     {
-        /** @var Min_DB */
-        global $connection;
-
-        foreach ($tables as $table) {
-            $response = $connection->_db->selectCollection($table)->remove();
-            if (!$response['ok']) {
-                return false;
-            }
+        $ret = true;
+        foreach ($tables as $tbl) {
+            $ret = $ret && queries('TRUNCATE TABLE ' . table($tbl));
         }
-        return true;
+
+        return $ret;
     }
 
     function alter_indexes($table, $alter)
@@ -534,28 +599,7 @@ if (isset($_GET["cassandra"])) {
         /** @var Min_DB */
         global $connection;
 
-        foreach ($alter as $val) {
-            list($type, $name, $set) = $val;
-            if ($set == "DROP") {
-                $return = $connection->_db->command(array("deleteIndexes" => $table, "index" => $name));
-            } else {
-                $columns = array();
-                foreach ($set as $column) {
-                    $column = preg_replace('~ DESC$~', '', $column, 1, $count);
-                    $columns[$column] = ($count ? -1 : 1);
-                }
-                $return = $connection->_db->selectCollection($table)->ensureIndex($columns, array(
-                    "unique" => ($type == "UNIQUE"),
-                    "name" => $name,
-                    //! "sparse"
-                ));
-            }
-            if ($return['errmsg']) {
-                $connection->error = $return['errmsg'];
-                return false;
-            }
-        }
-        return true;
+        return false;
     }
 
     function last_id()
@@ -568,7 +612,7 @@ if (isset($_GET["cassandra"])) {
 
     function table($idf)
     {
-        return $idf;
+        return idf_escape($idf);
     }
 
     function idf_escape($idf)
@@ -578,10 +622,25 @@ if (isset($_GET["cassandra"])) {
 
     function support($feature)
     {
-        return preg_match("~database|indexes|sql~", $feature);
+        return preg_match("~database|indexes|columns|sql~", $feature);
     }
 
     $jush = "cassandra";
+    $types = array(); ///< @var array ($type => $maximum_unsigned_length, ...)
+    $structured_types = array(); ///< @var array ($description => array($type, ...), ...)
+    foreach (array(
+                 lang('Numbers')       => array("tinyint" => 1, "smallint" => 1, "int" => 1, "bigint" => 1,
+                                                "varint" => 1, "decimal" => 1, "float" => 1, "double" => 1,
+                                                "counter" => 1),
+                 lang('Date and time') => array("timeuuid" => 1, "date" => 1, "time" => 1, "timestamp" => 1),
+                 lang('Strings')       => array("varchar" => 1, "text" => 1, "ascii" => 1),
+                 lang('Binary')        => array("blob" => 1),
+                 lang('Collections')   => array("list" => 1, "set" => 1, "map" => 1, "tuple" => 1),
+                 lang('Other')         => array("boolean" => 1, "inet" => 1),
+             ) as $key => $val) {
+        $types += $val;
+        $structured_types[$key] = array_keys($val);
+    }
     $operators = array("=", "<", ">", "<=", ">=", "CONTAINS", "CONTAINS KEY");
     $functions = array();
     $grouping = array();
